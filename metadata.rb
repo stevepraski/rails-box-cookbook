@@ -1,0 +1,15 @@
+name 'rails-box-cookbook'
+maintainer 'Steven Praski'
+maintainer_email 'stevepraski@users.noreply.github.com'
+license 'mit'
+description 'Rails Application Box Cookbook'
+long_description IO.read(File.join(File.dirname(__FILE__), 'README.md'))
+version '0.1.0'
+
+depends 'runit'
+depends 'build-essential'
+depends 'rbenv'
+depends 'nginx'
+depends 'unicorn'
+depends 'application'
+depends 'ssh_known_hosts'

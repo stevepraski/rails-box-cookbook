@@ -1,0 +1,19 @@
+---
+driver:
+  name: vagrant
+  network:
+    - ["forwarded_port", {guest: 80, host: 8888}]
+
+provisioner:
+  name: chef_zero
+  require_chef_omnibus: 12.2.1
+
+platforms:
+  - name: ubuntu-12.04
+  - name: centos-6.5
+
+suites:
+  - name: default
+    run_list:
+      - recipe[rails-box-cookbook::default]
+    attributes:
