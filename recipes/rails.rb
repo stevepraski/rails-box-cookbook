@@ -12,6 +12,7 @@
 include_recipe 'runit::default'
 include_recipe 'nginx::default'
 include_recipe 'unicorn::default'
+include_recipe 'postgresql::client'
 
 # FIXME: git ssh clones will still fail due to lack of sshd identity generation
 include_recipe 'ssh_known_hosts'
@@ -43,12 +44,17 @@ user app_user do
   action :create
 end
 
+# let nginx in
+directory app_user_dir do
+  mode '0775'
+end
+
 # application directory scaffolding (should actually be done by deployment mechanism?)
 deploy_shared_dirs.each do |path|
   directory File.join(app_dir, 'shared', path) do
     owner app_user
     group app_user
-    mode '0770'
+    mode '0775'
     recursive true
   end
 end
@@ -87,13 +93,14 @@ end
 runit_service app_name do
   run_template_name 'unicorn'
   log_template_name 'unicorn'
+  cookbook 'rails-box-cookbook'
   options(
     user: app_user,
     group: app_user,
     rack_env: node['rails_app']['rack_env'],
     smells_like_rack: true,
     unicorn_config_file: unicorn_conf,
-    working_directory: app_root
+    working_directory: app_working_dir
   )
   restart_on_update false
 end
@@ -111,7 +118,12 @@ end
 # FIXME: read from Gemfile directly?
 file File.join(app_working_dir, '.ruby-version') do
   content app_ruby
-  action :create_if_missing 
+  action :create_if_missing
+end
+
+execute 'pg gem dependacy' do
+  user 'root'
+  command "bundle config build.pg --with-pg-config=/usr/pgsql-#{node['postgresql']['version']}/bin/pg_config"
 end
 
 # FIXME: platform specific shell initiation is critical for rbenv shims to work:
@@ -135,3 +147,7 @@ end
 #   rule ["--proto tcp --dport #{listen_port}"]
 #   jump 'ACCEPT'
 # end
+
+nginx_site app_name do
+  notifies :reload, 'service[nginx]'
+end
