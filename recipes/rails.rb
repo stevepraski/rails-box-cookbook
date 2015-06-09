@@ -36,6 +36,7 @@ group app_user do
   action :create
 end
 
+# command line user creation is really bad in ubuntu 12.04, or else I'm missing something
 user app_user do
   gid app_user
   home File.join('/home', app_user)
@@ -46,6 +47,8 @@ end
 
 # let nginx in
 directory app_user_dir do
+  owner app_user
+  group app_user
   mode '0775'
 end
 
@@ -81,7 +84,7 @@ end
 
 # Unicorn template
 unicorn_config unicorn_conf do
-  listen(node['unicorn']['port'] => node['unicorn']['options'])
+  listen(socket => node['unicorn']['options'])
   working_directory app_working_dir
   worker_timeout node['unicorn']['worker_timeout']
   preload_app node['unicorn']['preload_app']
@@ -114,32 +117,30 @@ application app_name do
   repository node['rails_box']['deploy']['repository']
 end
 
-# workaround for missing .ruby-version
-# FIXME: read from Gemfile directly?
+# workaround for possible missing .ruby-version
 file File.join(app_working_dir, '.ruby-version') do
   content app_ruby
   action :create_if_missing
 end
 
+pg_config_path = node['platform_family'] == 'debian' ? '/usr/bin/pg_config' : "/usr/pgsql-#{node['postgresql']['version']}/bin/pg_config"
 execute 'pg gem dependacy' do
   user 'root'
-  command "bundle config build.pg --with-pg-config=/usr/pgsql-#{node['postgresql']['version']}/bin/pg_config"
+  command "bundle config build.pg --with-pg-config=#{pg_config_path}"
 end
 
-# FIXME: platform specific shell initiation is critical for rbenv shims to work:
-# refer: https://github.com/sstephenson/rbenv/wiki/Unix-shell-initialization
-# probably want to fix this and move to user creation, dumping a hard-link to the proper init file
-shell_init_file =  node['platform_family'] == 'rhel' ? '.bash_profile' : '.bashrc'
-shell_init_path = File.join(app_user_dir, shell_init_file)
-
-# FIXME: ignores migrations, etc.
-execute 'bundle with binary stubs' do
+bash 'bundle with binary stubs' do
   user app_user
-  command "source #{shell_init_path} && cd #{app_working_dir} && \
-  bundle install --binstubs --deployment --without development test"
+  cwd app_working_dir
+  code <<-EOH
+  source /etc/profile.d/rbenv.sh
+  bundle install --binstubs --deployment --without development test
+  EOH
 end
 
 # FIXME: ignoring database configuration
+# FIXME: ignores migrations, etc.
+# FIXME: FIREWALL
 
 # open a port
 # FIXME: REFACTOR: more elegant to use prep-box-cookbook:firewall
@@ -147,6 +148,8 @@ end
 #   rule ["--proto tcp --dport #{listen_port}"]
 #   jump 'ACCEPT'
 # end
+
+package 'nodejs'
 
 nginx_site app_name do
   notifies :reload, 'service[nginx]'
